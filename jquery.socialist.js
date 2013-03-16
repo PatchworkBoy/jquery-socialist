@@ -8,7 +8,7 @@
  */
 
 ;(function ( $, window, document, undefined ) {
-
+	
     $.fn.socialist = function(method) {
 
         var methods = {
@@ -28,7 +28,7 @@
                     
                     // display loader
                     $element.addClass('socialist-loader');
-                    
+                   
                     if (settings.feed) {
                         processList.push(helpers.doRequest(settings.feed,"json",function(q){
     						var container=$('<div></div>');
@@ -54,6 +54,9 @@
                             reqUrl = reqUrl.replace("|areaName|",item.areaName);
                             reqUrl = reqUrl.replace("|apiKey|",item.apiKey);
                             reqUrl = reqUrl.replace("|num|",settings.maxResults);
+                            // Added by Marc Coyles - Feb 2013
+                            // allows user to supply authtoken for accessing feeds from secure apis
+                            reqUrl = reqUrl.replace("|authtoken|",item.authtoken);
                             // add to array for processing
                             processList.push(helpers.doRequest(reqUrl,nw.dataType,nw.cb,nw.parser,settings));
                         }
@@ -99,13 +102,14 @@
                 var container=$('<div></div>');
                 //console.log(JSON.stringify(data));
                                                    
-                apiParser.resultsSelector = apiParser.resultsSelector.replace('|num|',settings.maxResults);          
+                apiParser.resultsSelector = apiParser.resultsSelector.replace('|num|',settings.maxResults);
                     
                 $.each(eval(apiParser.resultsSelector), function(i,item) {
                     
                     var $elem = $(item),
                         heading,
                         txt,
+                        linkTxt,
                         linkHref,
                         imgSrc,
                         imgHref,
@@ -160,17 +164,44 @@
                                 heading = apiParser.heading;
                             }
                             
-                            txt=eval(apiParser.txtSelector);
-                            if (txt!==null) {
-                                txt = helpers.shorten(txt,settings.textLength);
+                            // link href
+                            linkHref=eval(apiParser.linkSelector);
+                            
+                            // Added by Marc Coyles - Feb 2013
+                            // Do some fudgery to make fbgroups feeds work
+                            if(linkHref!==null && apiParser.name=='fbgroup'){
+	                            linkHref=linkHref.replace(/_/g,'/');
+	                            linkHref='https://www.facebook.com/groups/' + linkHref;
+	                            // console.log(linkHref)
                             }
-                            else {
-                                txt = "";
+                            
+                            txt=eval(apiParser.txtSelector);
+                            if (txt!==null && txt!=='') {
+                            	
+                                txt = helpers.shorten(txt,settings.textLength);
+                                
+                                // Added by Marc Coyles - Feb 2013
+                                // look for URLs and linkify
+                                txt = txt.replace(/[A-Za-z]+:\/\/[A-Za-z0-9-_]+\.[A-Za-z0-9-_:%&~\?\/.=]+/g, function(url) {
+									return url.link(url);
+								});
+								
+								// look for twitter handles and linkify
+                                txt = txt.replace(/[@]+[A-Za-z0-9-_]+/g, function(u) {
+									var username = u.replace("@","")
+									return u.link("http://twitter.com/"+username);
+								});
+								
+								//look for hashtags and linkify
+                                txt = txt.replace(/[#]+[A-Za-z0-9-_]+/g, function(t) {
+									var tag = t.replace("#","%23")
+									return t.link("http://search.twitter.com/search?q="+tag);
+								});
+                                
+                            } else {					  
+   	                            txt = "<em>This is a shared link or event with no status message</em>";
                             }
 
-                            // link href
-                            linkHref="#";
-                            
                             // image src
                             if (apiParser.imgSrcSelector===null){
                                 imgSrc=apiParser.imgSrc;
@@ -219,13 +250,13 @@
                              
                     }
                     catch (e) {
-                       //console.log("parse error:"+apiParser.name+":"+e)
+                       console.log("parse error:"+apiParser.name+":"+e)
                     }
                 }); // end each
                 return container;
             },
             doRequest: function(url,dataType,cb,parser,settings){
-                //console.log("ajax: " + dataType + ":" + url);
+                console.log("ajax: " + dataType + ":" + url);
                 return $.ajax({
                     url: url,
                     type: "GET",
@@ -237,7 +268,7 @@
                             cb(data);
                     },
                     error: function(status) {
-                        //console.log("request error:"+url);
+                        console.log("request error:"+url);
                         cb($('<div></div>'));
                     }
                 });
@@ -245,17 +276,17 @@
                 //return;
             },
             buildItem: function(itemObj,container,fields) {
-  
+	            //console.log(itemObj);
                 var $headDiv = $('<div class="head"/>'),
                     $source = $('<div class="source"></div>'),
-                    $sourceLnk = $('<a href="'+itemObj.img.href+'" title="'+itemObj.link.title+'"></a>'),
+                    $sourceLnk = $('<a class="mcoslink" href="'+itemObj.link.href+'" target="_blank" title="'+itemObj.link.title+'"></a>'),
                     $sourceLnkDiv = $('<div/>'),
                     $apiSpan = $('<div class="api"></div>'),
-                    $apiSpanLnk = $('<a href="'+itemObj.img.href+'"></a>'),
+                    $apiSpanLnk = $('<a class=mcosplink" href="'+itemObj.img.href+'" target="_blank"></a>'),
                     $contentDiv = $('<div class="content"/>'),
                     $contentDivInner = $('<div>'+itemObj.txt+' </div>'),
-                    $imgLnk = $('<a href="'+itemObj.img.href+'" title="'+itemObj.link.title+'"></a>'),
-                    $img = $('<image src="'+itemObj.img.src+'" alt="'+helpers.stripHtml(itemObj.img.alt)+'">'),
+                    $imgLnk = $('<a class="mcoimglnk" target="_blank" href="'+itemObj.img.href+'" title="'+itemObj.link.title+'"></a>'),
+                    $img = $('<img src="'+itemObj.img.src+'" alt="'+helpers.stripHtml(itemObj.img.alt)+'">'),
                     $shareDiv = $('<div class="share"><a href="#" title='+itemObj.api+'>fb</a>|<a href="#" class="x">tw</a></div>'),
                     $dateSpan = $('<div class="date"/>'),
                     $footDiv = $('<div class="foot"/>');
@@ -341,6 +372,26 @@
                     preProcessor: null,
                     preCondition: "true"}
                 },
+                // Added by Marc Coyles - Feb 2013
+                // Allows support of Facebook group wall feeds
+                fbgroup:{url:'https://graph.facebook.com/|id|/feed?access_token=|authtoken|&callback=?',dataType:"jsonp",link:'',parser:{
+	                name: "fbgroup",
+                    resultsSelector: "data.data",
+                    heading: "FB Group",
+                    headingSelector: "item.from.name",
+                    txtSelector: "(item.message)||''",
+                    type: "item.type",
+                    dateSelector: "helpers.timeAgo(item.created_time)",
+                    imgSrcSelector: "(item.picture)||''",
+                    imgSrcProcessor: null,
+                    imgHrefSelector: "(item.link)||(item.id)",
+                    imgAltSelector: "(item.caption)||(item.id)",
+                    link: "#",
+                    linkSelector: "(item.id)",
+                    linkTipSelector:"item.from.name",
+                    preProcessor: null,
+                    preCondition: "true"}
+                },
                 youtube:{url:'https://gdata.youtube.com/feeds/api/users/|id|/uploads?alt=json&max-results=|num|',dataType:"jsonp",img:'',parser:{
                     name: "youtube",
                     resultsSelector: "data.feed.entry",
@@ -362,11 +413,29 @@
                     headingSelector: "item.user.screen_name",
                     txtSelector: "item.text",
                     dateSelector: "helpers.timeAgo(helpers.fixTwitterDate(item.created_at))",
-                    imgSrcSelector: "(item.user.profile_image_url)||'/assets/spacer.gif'",
+                    imgSrcSelector: "(item.user.profile_image_url)||'js/socialist/images/spacer.gif'",
                     imgSrcProcessor: null,
                     imgHrefSelector: "((item.entities.urls[0]||{urls:''}).url)||'http://www.twitter.com/'+item.user.screen_name",
                     imgAltSelector: "item.user.screen_name",
                     link: "#",
+                    preProcessor: null,
+                    preCondition: "true"}
+                },
+                // Added by Marc Coyles - Feb 2013
+                // Allows support of twitter hashtag searches
+                hashtag:{url:'https://search.twitter.com/search.json?include_entities=true&include_rts=true&q=%23|id|&count=|num|',dataType:"jsonp",img:'',parser:{
+                    name: "hashtag",
+                    resultsSelector: "data.results",
+                    heading: "Hashtag",
+                    headingSelector: "item.from_user_name",
+                    txtSelector: "item.text",
+                    dateSelector: "helpers.timeAgo(helpers.fixTwitterDate(item.created_at))",
+                    imgSrcSelector: "(item.profile_image_url)||'js/socialist/images/spacer.gif'",
+                    imgSrcProcessor: null,
+                    imgHrefSelector: "((item.entities.urls[0]||{urls:''}).url)||'http://www.twitter.com/'+item.from_user",
+                    imgAltSelector: "item.from_user_name",
+                    link: "#",
+                    linkSelector: "'http://www.twitter.com/'+item.from_user",
                     preProcessor: null,
                     preCondition: "true"}
                 },
@@ -466,7 +535,7 @@
                    heading: "Instagr.am",
                    headingSelector: "item.caption.text",
                    txtSelector: "item.caption.text",
-                   imgSrcSelector: "(item.images.low_resolution.url)||'/assets/spacer.gif'",
+                   imgSrcSelector: "(item.images.low_resolution.url)||'js/socialist/images/spacer.gif'",
                    imgHrefSelector: "item.link",
                    imgSrcProcessor: null,
                    imgAltSelector: "item.caption.text",
@@ -498,7 +567,7 @@
                     headingSelector: "item.title",
                     txtSelector: "item.description",
                     dateSelector: "helpers.timeAgo(item.upload_date)",
-                    imgSrcSelector: "(item.thumbnail_medium)||'/assets/spacer.gif'",
+                    imgSrcSelector: "(item.thumbnail_medium)||'js/socialist/images/spacer.gif'",
                     imgSrcProcessor: null,
                     imgHrefSelector: "'http://vimeo.com/'+item.id",
                     imgAltSelector: "item.title",
@@ -574,17 +643,18 @@
                 return time;
             },                
             fixTwitterDate: function(created_at) {
+            	
                 var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
                 var pattern = /\s/;
                 var day_of_week,day,month_pos,month,year,time;
                 created_at = created_at.split(pattern);
                 for (var i = 0; i < created_at.length; i++){
-                    day_of_week = created_at[0];
-                    day = created_at[2];
-                    month_pos = created_at[1];
+                    day_of_week = created_at[0].substring(0, created_at[0].length - 1);
+                    day = created_at[1];
+                    month_pos = created_at[2];
                     month = 0 + months.indexOf(month_pos) + 1; // add 1 because array starts from zero
-                    year = created_at[5];
-                    time = created_at[3];
+                    year = created_at[3];
+                    time = created_at[4];
                 }
                 created_at = year+'-'+month+'-'+day+'T'+time+'Z';
                 
@@ -615,7 +685,7 @@
     }
 
     $.fn.socialist.settings = {}
-
+   
 })(jQuery);
 
 /** IE **/
